@@ -13,6 +13,7 @@ const byte ledPins[4]   = {12, 13, A0, A1}; // LED cathode controls (ULN2803)
 // --- State variables ---
 bool loopState[4] = {false, false, false, false};
 unsigned long lastPress[4] = {0,0,0,0};
+int footPrev[4] = {HIGH, HIGH, HIGH, HIGH};
 const unsigned long debounce = 150;
 const unsigned int muteTime = 40; // ms mute window
 
@@ -24,13 +25,13 @@ void setup() {
   
   // Outputs (ULN2803 inputs)
   pinMode(mutePin, OUTPUT);
-  digitalWrite(mutePin, HIGH); // ULN sinks => mute off
+  digitalWrite(mutePin, LOW); // ULN sinks => mute off
 
   for (byte i=0;i<4;i++) {
     pinMode(loopPins[i], OUTPUT);
-    digitalWrite(loopPins[i], HIGH); // ULN sinks => loops off
+    digitalWrite(loopPins[i], LOW); // ULN sinks => loops off
     pinMode(ledPins[i], OUTPUT);
-    digitalWrite(ledPins[i], HIGH);  // LED off (ULN sinks)
+    digitalWrite(ledPins[i], LOW);  // LED off (ULN sinks)
   }
 
   lcd.init();
@@ -43,19 +44,25 @@ void setup() {
 }
 
 void loop() {
+  unsigned long now = millis();
   for (byte i=0;i<4;i++) {
-    if (digitalRead(footPins[i]) == LOW) {
-      if (millis() - lastPress[i] > debounce) {
-        lastPress[i] = millis();
+    int state = digitalRead(footPins[i]);
+    if (footPrev[i] == HIGH && state == LOW) {
+      if (now - lastPress[i] > debounce) {
+        lastPress[i] = now;
         toggleLoop(i);
       }
     }
+    if (state == HIGH && footPrev[i] == LOW) {
+      lastPress[i] = now; // ensure debounce period starts after release as well
+    }
+    footPrev[i] = state;
   }
 }
 
 void toggleLoop(byte ch) {
   // --- engage mute ---
-  digitalWrite(mutePin, LOW);  // pull gate high via open collector off (ULN active)
+  digitalWrite(mutePin, HIGH);  // activate ULN sink to mute output
   delay(muteTime);
 
   // toggle state
@@ -64,15 +71,15 @@ void toggleLoop(byte ch) {
 
   // --- unmute ---
   delay(muteTime);
-  digitalWrite(mutePin, HIGH);
+  digitalWrite(mutePin, LOW);
 
   updateLCD();
 }
 
 void applyState(byte ch) {
-  // Loop logic is inverted (LOW=ON)
-  digitalWrite(loopPins[ch], loopState[ch] ? LOW : HIGH);
-  digitalWrite(ledPins[ch], loopState[ch] ? LOW : HIGH);
+  // Loop logic is inverted (HIGH=ON)
+  digitalWrite(loopPins[ch], loopState[ch] ? HIGH : LOW);
+  digitalWrite(ledPins[ch], loopState[ch] ? HIGH : LOW);
 }
 
 void updateLCD() {
