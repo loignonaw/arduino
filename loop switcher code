@@ -1,0 +1,86 @@
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
+// --- LCD setup ---
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+// --- Pin mapping ---
+const byte footPins[4] = {2, 3, 4, 5}; // Footswitch inputs
+const byte loopPins[4]  = {8, 9, 10, 11}; // Loops via ULN2803
+const byte mutePin      = 7;  // Mute MOSFET control
+const byte ledPins[4]   = {12, 13, A0, A1}; // LED cathode controls (ULN2803)
+
+// --- State variables ---
+bool loopState[4] = {false, false, false, false};
+unsigned long lastPress[4] = {0,0,0,0};
+const unsigned long debounce = 150;
+const unsigned int muteTime = 40; // ms mute window
+
+void setup() {
+  // Inputs
+  for (byte i=0;i<4;i++) {
+    pinMode(footPins[i], INPUT_PULLUP);
+  }
+  
+  // Outputs (ULN2803 inputs)
+  pinMode(mutePin, OUTPUT);
+  digitalWrite(mutePin, HIGH); // ULN sinks => mute off
+
+  for (byte i=0;i<4;i++) {
+    pinMode(loopPins[i], OUTPUT);
+    digitalWrite(loopPins[i], HIGH); // ULN sinks => loops off
+    pinMode(ledPins[i], OUTPUT);
+    digitalWrite(ledPins[i], HIGH);  // LED off (ULN sinks)
+  }
+
+  lcd.init();
+  lcd.backlight();
+  lcd.setCursor(0,0);
+  lcd.print("FX Switcher Ready");
+  delay(1000);
+  lcd.clear();
+  updateLCD();
+}
+
+void loop() {
+  for (byte i=0;i<4;i++) {
+    if (digitalRead(footPins[i]) == LOW) {
+      if (millis() - lastPress[i] > debounce) {
+        lastPress[i] = millis();
+        toggleLoop(i);
+      }
+    }
+  }
+}
+
+void toggleLoop(byte ch) {
+  // --- engage mute ---
+  digitalWrite(mutePin, LOW);  // pull gate high via open collector off (ULN active)
+  delay(muteTime);
+
+  // toggle state
+  loopState[ch] = !loopState[ch];
+  applyState(ch);
+
+  // --- unmute ---
+  delay(muteTime);
+  digitalWrite(mutePin, HIGH);
+
+  updateLCD();
+}
+
+void applyState(byte ch) {
+  // Loop logic is inverted (LOW=ON)
+  digitalWrite(loopPins[ch], loopState[ch] ? LOW : HIGH);
+  digitalWrite(ledPins[ch], loopState[ch] ? LOW : HIGH);
+}
+
+void updateLCD() {
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print("Loops:");
+  for (byte i=0;i<4;i++) {
+    lcd.setCursor(6+i,0);
+    lcd.print(loopState[i] ? '1' : '0');
+  }
+}
